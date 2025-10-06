@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Green Bond Stock Exchange Game</title>
+<style>
+body, html {margin:0; padding:0; font-family: Arial; background:#222; color:white;}
+.hidden {display:none;}
+#loginScreen, #gameScreen, #hostPanel, #leaderboard {padding:20px; text-align:center;}
+button {padding:10px 15px; margin:5px; border-radius:8px; border:none; cursor:pointer;}
+#sectorPanel {display:flex; flex-wrap:wrap; justify-content:center;}
+.sectorBtn {width:180px; margin:5px; padding:10px; border-radius:10px; border:none; cursor:pointer; transition:0.3s;}
+.sectorBtn.unlocked:hover {transform:scale(1.05);}
+.restricted {background-color:grey; cursor:not-allowed;}
+.unlocked {background-color:limegreen;}
+.teamCard {border:2px solid white; border-radius:10px; margin:5px; padding:5px; width:200px;}
+#winnerPopup {position:fixed; top:30%; left:30%; background:gold; color:black; padding:20px; font-size:24px; border-radius:15px; display:none; animation:pop 1s ease; z-index:1000;}
+@keyframes pop {0% {transform:scale(0);} 50% {transform:scale(1.2);} 100% {transform:scale(1);}}
+#newsFlash {margin:10px; font-size:18px; color:yellow;}
+#tipFlash {margin:10px; font-size:16px; color:cyan;}
+#playerList {margin:10px; padding:10px; border:1px solid white; max-height:200px; overflow-y:auto;}
+.avatar {display:inline-block; width:20px; height:20px; border-radius:50%; margin-right:5px;}
+</style>
+</head>
+<body>
+
+<div id="loginScreen">
+  <h1>Green Bond Stock Exchange</h1>
+  <p>Host generates room code:</p>
+  <input type="text" id="hostName" placeholder="Enter Host Name">
+  <button onclick="generateRoom()">Generate Room Code</button>
+  <p id="roomCodeDisplay"></p>
+  <hr>
+  <p>Players join using Room Code:</p>
+  <input type="text" id="teamName" placeholder="Enter Team Name">
+  <input type="text" id="joinCode" placeholder="Enter Room Code">
+  <select id="avatarSelect">
+    <option value="red">Red</option>
+    <option value="blue">Blue</option>
+    <option value="green">Green</option>
+    <option value="yellow">Yellow</option>
+    <option value="purple">Purple</option>
+    <option value="orange">Orange</option>
+    <option value="pink">Pink</option>
+    <option value="cyan">Cyan</option>
+  </select>
+  <button onclick="joinGame()">Join Game</button>
+</div>
+
+<div id="hostPanel" class="hidden">
+  <h2>Host Panel (Supervisor)</h2>
+  <p>Room Code: <span id="hostRoomCode"></span></p>
+  <h3>Joined Players:</h3>
+  <div id="playerList"></div>
+  <button onclick="startGame()">Start Game</button>
+  <button onclick="unlockSectors()">Unlock Sectors</button>
+  <p>Flash News:</p>
+  <button onclick="flashNews('Oil price spikes!',2)">Oil Price Spike</button>
+  <button onclick="flashNews('Subsidy cut announced!',2)">Subsidy Cut</button>
+  <button onclick="flashNews('Green bonds trending!',1)">Green Bonds Trending</button>
+  <button onclick="flashNews('New solar incentives announced!',1)">Solar Incentives</button>
+  <button onclick="flashNews('Wind farm subsidies reduced!',2)">Wind Subsidy Cut</button>
+  <button onclick="calculateScores()">End Game & Show Winner</button>
+</div>
+
+<div id="gameScreen" class="hidden">
+  <h2 id="welcomeText"></h2>
+  <div id="newsFlash"></div>
+  <div id="tipFlash"></div>
+  <div id="sectorPanel"></div>
+  <p>Total Remaining Investment: <span id="remainingInvest">100</span></p>
+  <button onclick="submitInvestments()">Submit Investments</button>
+</div>
+
+<div id="leaderboard" class="hidden">
+  <h2>Leaderboard</h2>
+  <div id="scoreList"></div>
+  <div id="winnerPopup"></div>
+</div>
+
+<script>
+// --- Game Data ---
+let hostName = '';
+let roomCode = '';
+let hostGenerated = false;
+let teams = [];
+let sectors = [
+  {name:"Railways Electrification", return:8, green:3, locked:true},
+  {name:"Expressways (DMEDL)", return:10, green:4, locked:true},
+  {name:"Solar Parks (Rewa)", return:7, green:5, locked:true},
+  {name:"Wind Farms", return:6.5, green:5, locked:false},
+  {name:"EV Charging Infra", return:8, green:4, locked:false},
+  {name:"Recycling Plants", return:7, green:4, locked:false},
+  {name:"Hydropower", return:6, green:3, locked:true},
+  {name:"Energy Efficiency", return:5.5, green:5, locked:false},
+  {name:"Green Urban Transport", return:7.5, green:4, locked:true},
+  {name:"Sustainable Agriculture", return:6, green:5, locked:false},
+  {name:"Green Tech Startups", return:9, green:5, locked:true}
+];
+let impostorTeams = [];
+
+// --- Host generates Room Code ---
+function generateRoom(){
+  hostName = document.getElementById('hostName').value;
+  if(!hostName){ alert("Enter Host Name"); return; }
+  roomCode = Math.floor(1000 + Math.random()*9000);
+  hostGenerated = true;
+  document.getElementById('hostPanel').classList.remove('hidden');
+  document.getElementById('hostRoomCode').innerText = roomCode;
+  alert(`Room Code generated: ${roomCode}`);
+}
+
+// --- Player joins ---
+function joinGame(){
+  if(!hostGenerated){ alert("Wait for host to generate room code"); return; }
+  if(teams.length>=8){ alert("Max 8 teams allowed"); return; }
+  let name = document.getElementById('teamName').value;
+  let code = document.getElementById('joinCode').value;
+  let avatar = document.getElementById('avatarSelect').value;
+  if(!name || !code){ alert("Enter name and room code"); return; }
+  if(code != roomCode){ alert("Incorrect Room Code"); return; }
+
+  let role="investor";
+  let team = {name, avatar, role, investments:{}, remaining:100};
+  teams.push(team);
+  updatePlayerList();
+  document.getElementById('loginScreen').classList.add('hidden');
+  document.getElementById('gameScreen').classList.remove('hidden');
+  document.getElementById('welcomeText').innerText = `Welcome ${name}! Role: Investor`;
+  showSectors();
+}
+
+// --- Update Player List (Host View) ---
+function updatePlayerList(){
+  const list = document.getElementById('playerList');
+  list.innerHTML = '';
+  teams.forEach(t=>{
+    let div = document.createElement('div');
+    div.innerHTML = `<span class="avatar" style="background-color:${t.avatar}"></span> ${t.name}`;
+    list.appendChild(div);
+  });
+}
+
+// --- Show Sectors ---
+function showSectors(){
+  const panel = document.getElementById('sectorPanel');
+  panel.innerHTML="";
+  let currentTeam = teams[teams.length-1];
+  sectors.forEach((s,i)=>{
+    let btn = document.createElement('button');
+    btn.innerText=`${s.name} (${s.return}%)`;
+    btn.className = s.locked?'sectorBtn restricted':'sectorBtn unlocked';
+    btn.disabled = s.locked;
+    btn.onclick = ()=>{
+      let maxInvest = currentTeam.remaining;
+      let amount = parseFloat(prompt(`Enter amount to invest (max ${maxInvest})`));
+      if(isNaN(amount)||amount<=0||amount>maxInvest){ alert("Invalid"); return; }
+      currentTeam.investments[s.name] = (currentTeam.investments[s.name] || 0) + amount;
+      currentTeam.remaining -= amount;
+      document.getElementById('remainingInvest').innerText = currentTeam.remaining;
+      btn.style.backgroundColor='orange';
+    };
+    panel.appendChild(btn);
+  });
+}
+
+// --- Submit Investments ---
+function submitInvestments(){
+  alert("Investments submitted!");
+}
+
+// --- Start Game (Host Only) ---
+function startGame(){
+  if(teams.length<2){ alert("Need at least 2 teams to start"); return; }
+  alert("Game Started!");
+  // Assign 2 impostors
+  let indices = [];
+  while(indices.length<2){
+    let rand = Math.floor(Math.random()*teams.length);
+    if(!indices.includes(rand)){
+      indices.push(rand);
+      teams[rand].role="impostor";
+      impostorTeams.push(teams[rand]);
+      alert(`${teams[rand].name} assigned as Green Impostor`);
+    }
+  }
+}
+
+// --- Unlock Sectors ---
+function unlockSectors(){
+  sectors.forEach(s=>s.locked=false);
+  alert("All sectors unlocked! Players can reallocate funds.");
+  showSectors();
+}
+
+// --- Flash News ---
+function flashNews(msg,type=1){
+  document.getElementById('newsFlash').innerText = msg;
+  if(type===2){ sectors.forEach(s=>{ s.return *= 0.9; }); }
+  setTimeout(()=>{ 
+    document.getElementById('newsFlash').innerText="";
+    if(type===2) sectors.forEach(s=>{ s.return /=0.9; });
+  }, 5000);
+}
+
+// --- Calculate Scores & Show Winner ---
+function calculateScores(){
+  let maxScore=-1, winner=null;
+  let scoreHTML="";
+  teams.forEach(t=>{
+    let financial=0, green=0;
+    sectors.forEach(s=>{
+      if(t.investments[s.name]){
+        financial += t.investments[s.name]*s.return;
+        green += t.investments[s.name]*s.green;
+      }
+    });
+    let total = 0.5*financial + 0.5*green;
+    scoreHTML += `<div class="teamCard" style="background-color:${t.avatar}">${t.name} (${t.role}): Total Score = ${total.toFixed(2)}</div>`;
+    if(total>maxScore){ maxScore=total; winner=t; }
+  });
+  document.getElementById('scoreList').innerHTML = scoreHTML;
+  document.getElementById('leaderboard').classList.remove('hidden');
+  document.getElementById('winnerPopup').style.display='block';
+  document.getElementById('winnerPopup').innerText=`🎉 Winner: ${winner.name} 🎉\nImpostors: ${impostorTeams.map(t=>t.name).join(', ')}`;
+}
+</script>
+</body>
+</html>
